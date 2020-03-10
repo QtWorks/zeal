@@ -1,7 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2015-2016 Oleg Shparber
-** Copyright (C) 2013-2014 Jerzy Kozera
+** Copyright (C) 2020 Oleg Shparber
 ** Contact: https://go.zealdocs.org/l/contact
 **
 ** This file is part of Zeal.
@@ -17,38 +16,49 @@
 ** GNU General Public License for more details.
 **
 ** You should have received a copy of the GNU General Public License
-** along with Zeal. If not, see <https://www.gnu.org/licenses/>.
+** along with Zeal. If not, see <http://www.gnu.org/licenses/>.
 **
 ****************************************************************************/
 
-#ifndef ZEAL_WIDGETUI_PROGRESSITEMDELEGATE_H
-#define ZEAL_WIDGETUI_PROGRESSITEMDELEGATE_H
+#ifndef ZEAL_CORE_HTTPSERVER_H
+#define ZEAL_CORE_HTTPSERVER_H
 
-#include <QStyledItemDelegate>
+#include <QObject>
+#include <QUrl>
+
+#include <future>
+#include <memory>
+
+namespace httplib {
+class Server;
+} // namespace httplib
 
 namespace Zeal {
-namespace WidgetUi {
+namespace Core {
 
-class ProgressItemDelegate : public QStyledItemDelegate
+class HttpServer : public QObject
 {
     Q_OBJECT
+    Q_DISABLE_COPY(HttpServer)
 public:
-    enum ProgressRoles {
-        ValueRole = Qt::UserRole + 10,
-        FormatRole,
-        ShowProgressRole
-    };
+    explicit HttpServer(QObject *parent = nullptr);
+    ~HttpServer() override;
 
-    explicit ProgressItemDelegate(QObject *parent = nullptr);
+    QUrl baseUrl() const;
 
-    void paint(QPainter *painter, const QStyleOptionViewItem &option,
-               const QModelIndex &index) const override;
+    QUrl mount(const QString &prefix, const QString &path);
+    bool unmount(const QString &prefix);
 
 private:
-    static const int progressBarWidth = 150;
+    static QString sanitizePrefix(const QString &prefix);
+
+    std::unique_ptr<httplib::Server> m_server;
+    std::future<bool> m_future;
+
+    QUrl m_baseUrl;
 };
 
-} // namespace WidgetUi
+} // namespace Core
 } // namespace Zeal
 
-#endif // ZEAL_WIDGETUI_PROGRESSITEMDELEGATE_H
+#endif // ZEAL_CORE_HTTPSERVER_H

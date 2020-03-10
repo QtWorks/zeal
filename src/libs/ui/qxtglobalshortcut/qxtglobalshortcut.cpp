@@ -54,6 +54,7 @@
 #include "qxtglobalshortcut_p.h"
 
 #include <QAbstractEventDispatcher>
+#include <QGuiApplication>
 
 #ifndef Q_OS_MACOS
 int QxtGlobalShortcutPrivate::ref = 0;
@@ -61,8 +62,8 @@ int QxtGlobalShortcutPrivate::ref = 0;
 
 QHash<QPair<quint32, quint32>, QxtGlobalShortcut *> QxtGlobalShortcutPrivate::shortcuts;
 
-QxtGlobalShortcutPrivate::QxtGlobalShortcutPrivate(QxtGlobalShortcut *qq) :
-    q_ptr(qq)
+QxtGlobalShortcutPrivate::QxtGlobalShortcutPrivate(QxtGlobalShortcut *qq)
+    : q_ptr(qq)
 {
 #ifndef Q_OS_MACOS
     if (ref == 0)
@@ -162,18 +163,18 @@ bool QxtGlobalShortcutPrivate::activateShortcut(quint32 nativeKey, quint32 nativ
 /*!
     Constructs a new QxtGlobalShortcut with \a parent.
  */
-QxtGlobalShortcut::QxtGlobalShortcut(QObject *parent) :
-    QObject(parent),
-    d_ptr(new QxtGlobalShortcutPrivate(this))
+QxtGlobalShortcut::QxtGlobalShortcut(QObject *parent)
+    : QObject(parent)
+    , d_ptr(new QxtGlobalShortcutPrivate(this))
 {
 }
 
 /*!
     Constructs a new QxtGlobalShortcut with \a shortcut and \a parent.
  */
-QxtGlobalShortcut::QxtGlobalShortcut(const QKeySequence &shortcut, QObject *parent) :
-    QObject(parent),
-    d_ptr(new QxtGlobalShortcutPrivate(this))
+QxtGlobalShortcut::QxtGlobalShortcut(const QKeySequence &shortcut, QObject *parent)
+    : QObject(parent)
+    , d_ptr(new QxtGlobalShortcutPrivate(this))
 {
     setShortcut(shortcut);
 }
@@ -233,6 +234,16 @@ bool QxtGlobalShortcut::isEnabled() const
 {
     Q_D(const QxtGlobalShortcut);
     return d->enabled;
+}
+
+/*!
+ * \brief QxtGlobalShortcut::isSupported checks if the current platform is supported.
+ */
+bool QxtGlobalShortcut::isSupported()
+{
+    return QGuiApplication::platformName() == QLatin1String("windows")
+            || QGuiApplication::platformName() == QLatin1String("xcb")
+            || QGuiApplication::platformName() == QLatin1String("cocoa");
 }
 
 void QxtGlobalShortcut::setEnabled(bool enabled)

@@ -24,13 +24,13 @@
 
 #include "extractor.h"
 #include "filemanager.h"
+#include "httpserver.h"
 #include "networkaccessmanager.h"
 #include "settings.h"
 
 #include <registry/docsetregistry.h>
 #include <registry/searchquery.h>
 #include <ui/mainwindow.h>
-#include <util/version.h>
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -40,6 +40,7 @@
 #include <QNetworkProxy>
 #include <QNetworkReply>
 #include <QScopedPointer>
+#include <QStandardPaths>
 #include <QSysInfo>
 #include <QThread>
 
@@ -47,13 +48,13 @@ using namespace Zeal;
 using namespace Zeal::Core;
 
 namespace {
-const char ReleasesApiUrl[] = "http://api.zealdocs.org/v1/releases";
-}
+constexpr char ReleasesApiUrl[] = "https://api.zealdocs.org/v1/releases";
+} // namespace
 
 Application *Application::m_instance = nullptr;
 
-Application::Application(QObject *parent) :
-    QObject(parent)
+Application::Application(QObject *parent)
+    : QObject(parent)
 {
     // Ensure only one instance of Application
     Q_ASSERT(!m_instance);
@@ -63,6 +64,7 @@ Application::Application(QObject *parent) :
     m_networkManager = new NetworkAccessManager(this);
 
     m_fileManager = new FileManager(this);
+    m_httpServer = new HttpServer(this);
 
     // Extractor setup
     m_extractorThread = new QThread(this);
@@ -134,6 +136,35 @@ FileManager *Application::fileManager() const
     return m_fileManager;
 }
 
+HttpServer *Application::httpServer() const
+{
+    return m_httpServer;
+}
+
+QString Application::cacheLocation()
+{
+#ifndef PORTABLE_BUILD
+    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+#else
+    return QCoreApplication::applicationDirPath() + QLatin1String("/cache");
+#endif
+}
+
+QString Application::configLocation()
+{
+#ifndef PORTABLE_BUILD
+    // TODO: Replace 'Zeal/Zeal' with 'zeal'.
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+#else
+    return QCoreApplication::applicationDirPath() + QLatin1String("/config");
+#endif
+}
+
+QVersionNumber Application::version()
+{
+    return QVersionNumber::fromString(QCoreApplication::applicationVersion());
+}
+
 void Application::executeQuery(const Registry::SearchQuery &query, bool preventActivation)
 {
     m_mainWindow->search(query);
@@ -193,12 +224,14 @@ void Application::checkForUpdates(bool quiet)
             return;
         }
 
-        const QJsonObject latestVersionInfo = jsonDoc.array().first().toObject();
-        const Util::Version latestVersion = latestVersionInfo[QStringLiteral("version")].toString();
-        if (latestVersion > Util::Version(QCoreApplication::applicationVersion()))
+        const QJsonObject versionInfo = jsonDoc.array().first().toObject(); // Latest is the first.
+        const auto latestVersion
+                = QVersionNumber::fromString(versionInfo[QLatin1String("version")].toString());
+        if (latestVersion > version()) {
             emit updateCheckDone(latestVersion.toString());
-        else if (!quiet)
+        } else if (!quiet) {
             emit updateCheckDone();
+        }
     });
 }
 

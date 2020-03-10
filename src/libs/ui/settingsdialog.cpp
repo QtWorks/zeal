@@ -24,6 +24,8 @@
 #include "settingsdialog.h"
 #include "ui_settingsdialog.h"
 
+#include <qxtglobalshortcut/qxtglobalshortcut.h>
+
 #include <core/application.h>
 #include <core/settings.h>
 
@@ -36,17 +38,17 @@ using namespace Zeal::WidgetUi;
 
 namespace {
 // QFontDatabase::standardSizes() lacks some sizes, like 13, which QtWK uses by default.
-const int AvailableFontSizes[] = {9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-                                  20, 22, 24, 26, 28, 30, 32, 34, 36,
-                                  40, 44, 48, 56, 64, 72};
-const QWebSettings::FontFamily BasicFontFamilies[] = {QWebSettings::SerifFont,
-                                                      QWebSettings::SansSerifFont,
-                                                      QWebSettings::FixedFont};
-}
+constexpr int AvailableFontSizes[] = {9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+                                      20, 22, 24, 26, 28, 30, 32, 34, 36,
+                                      40, 44, 48, 56, 64, 72};
+constexpr QWebSettings::FontFamily BasicFontFamilies[] = {QWebSettings::SerifFont,
+                                                          QWebSettings::SansSerifFont,
+                                                          QWebSettings::FixedFont};
+} // namespace
 
-SettingsDialog::SettingsDialog(QWidget *parent) :
-    QDialog(parent),
-    ui(new Ui::SettingsDialog())
+SettingsDialog::SettingsDialog(QWidget *parent)
+    : QDialog(parent)
+    , ui(new Ui::SettingsDialog())
 {
     ui->setupUi(this);
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
@@ -74,6 +76,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) :
     // Fix tab order.
     setTabOrder(ui->defaultFontComboBox, ui->fontSizeComboBox);
     setTabOrder(ui->fontSizeComboBox, ui->serifFontComboBox);
+
+    // Disable global shortcut settings if not supported.
+    ui->globalHotKeyGroupBox->setEnabled(QxtGlobalShortcut::isSupported());
 
     QWebSettings *webSettings = QWebSettings::globalSettings();
 
@@ -214,7 +219,6 @@ void SettingsDialog::loadSettings()
     }
 
     ui->useSmoothScrollingCheckBox->setChecked(settings->isSmoothScrollingEnabled);
-    ui->disableAdCheckBox->setChecked(settings->isAdDisabled);
 
     // Network Tab
     switch (settings->proxyType) {
@@ -286,7 +290,6 @@ void SettingsDialog::saveSettings()
     }
 
     settings->isSmoothScrollingEnabled = ui->useSmoothScrollingCheckBox->isChecked();
-    settings->isAdDisabled = ui->disableAdCheckBox->isChecked();
 
     // Network Tab
     // Proxy settings

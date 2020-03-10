@@ -22,7 +22,7 @@
 
 #include "settings.h"
 
-#include "filemanager.h"
+#include "application.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -35,26 +35,26 @@
 
 namespace {
 // Configuration file groups
-const char GroupContent[] = "content";
-const char GroupDocsets[] = "docsets";
-const char GroupGlobalShortcuts[] = "global_shortcuts";
-const char GroupSearch[] = "search";
-const char GroupTabs[] = "tabs";
-const char GroupInternal[] = "internal";
-const char GroupState[] = "state";
-const char GroupProxy[] = "proxy";
-}
+constexpr char GroupContent[] = "content";
+constexpr char GroupDocsets[] = "docsets";
+constexpr char GroupGlobalShortcuts[] = "global_shortcuts";
+constexpr char GroupSearch[] = "search";
+constexpr char GroupTabs[] = "tabs";
+constexpr char GroupInternal[] = "internal";
+constexpr char GroupState[] = "state";
+constexpr char GroupProxy[] = "proxy";
+} // namespace
 
 using namespace Zeal::Core;
 
-Settings::Settings(QObject *parent) :
-    QObject(parent)
+Settings::Settings(QObject *parent)
+    : QObject(parent)
 {
     qRegisterMetaTypeStreamOperators<ExternalLinkPolicy>("ExternalLinkPolicy");
 
     // Enable local storage due to https://github.com/zealdocs/zeal/issues/872.
     QWebSettings *webSettings = QWebSettings::globalSettings();
-    webSettings->setLocalStoragePath(FileManager::cacheLocation() + QLatin1String("/localStorage"));
+    webSettings->setLocalStoragePath(Application::cacheLocation() + QLatin1String("/localStorage"));
     webSettings->setAttribute(QWebSettings::LocalStorageEnabled, true);
 
     load();
@@ -138,7 +138,6 @@ void Settings::load()
     externalLinkPolicy = settings->value(QStringLiteral("external_link_policy"),
                                          QVariant::fromValue(ExternalLinkPolicy::Ask)).value<ExternalLinkPolicy>();
     isSmoothScrollingEnabled = settings->value(QStringLiteral("smooth_scrolling"), false).toBool();
-    isAdDisabled = settings->value(QStringLiteral("disable_ad"), false).toBool();
     settings->endGroup();
 
     settings->beginGroup(GroupProxy);
@@ -227,7 +226,6 @@ void Settings::save()
     settings->setValue(QStringLiteral("custom_css_file"), customCssFile);
     settings->setValue(QStringLiteral("external_link_policy"), QVariant::fromValue(externalLinkPolicy));
     settings->setValue(QStringLiteral("smooth_scrolling"), isSmoothScrollingEnabled);
-    settings->setValue(QStringLiteral("disable_ad"), isAdDisabled);
     settings->endGroup();
 
     settings->beginGroup(GroupProxy);
@@ -252,7 +250,7 @@ void Settings::save()
     settings->beginGroup(GroupInternal);
     settings->setValue(QStringLiteral("install_id"), installId);
     // Version of configuration file format, should match Zeal version. Used for migration rules.
-    settings->setValue(QStringLiteral("version"), QCoreApplication::applicationVersion());
+    settings->setValue(QStringLiteral("version"), Application::version().toString());
     settings->endGroup();
 
     settings->sync();
@@ -271,16 +269,27 @@ void Settings::save()
 void Settings::migrate(QSettings *settings) const
 {
     settings->beginGroup(GroupInternal);
-    // TODO: [Qt 5.6] Use QVersionNumber.
-    const QString version = settings->value(QStringLiteral("version")).toString();
+    const auto version = QVersionNumber::fromString(settings->value(QStringLiteral("version")).toString());
     settings->endGroup();
+
+    //
+    // 0.6.0
+    //
+
+    // Unset content.default_fixed_font_size.
+    // The causing bug was 0.6.1 (#903), but the incorrect setting still comes to haunt us (#1054).
+    if (version == QVersionNumber(0, 6, 0)) {
+        settings->beginGroup(GroupContent);
+        settings->remove(QStringLiteral("default_fixed_font_size"));
+        settings->endGroup();
+    }
 
     //
     // Pre 0.4
     //
 
     // Rename 'browser' group into 'content'.
-    if (version < QLatin1String("0.4")) {
+    if (version < QVersionNumber(0, 4, 0)) {
         settings->beginGroup(QStringLiteral("browser"));
         const QVariant tmpMinimumFontSize = settings->value(QStringLiteral("minimum_font_size"));
         settings->endGroup();
@@ -293,13 +302,12 @@ void Settings::migrate(QSettings *settings) const
         }
     }
 
-
     //
     // Pre 0.3
     //
 
     // Unset 'state/splitter_geometry', because custom styles were removed.
-    if (version < QLatin1String("0.3")) {
+    if (version < QVersionNumber(0, 3, 0)) {
         settings->beginGroup(GroupState);
         settings->remove(QStringLiteral("splitter_geometry"));
         settings->endGroup();

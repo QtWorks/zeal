@@ -57,12 +57,12 @@
 #include <QVector>
 #include <QX11Info>
 
+#include <X11/Xlib.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_keysyms.h>
-#include <X11/Xlib.h>
 
 namespace {
-const quint32 maskModifiers[] = {
+constexpr quint32 maskModifiers[] = {
     0, XCB_MOD_MASK_2, XCB_MOD_MASK_LOCK, (XCB_MOD_MASK_2 | XCB_MOD_MASK_LOCK)
 };
 } // namespace
@@ -165,7 +165,6 @@ bool QxtGlobalShortcutPrivate::unregisterShortcut(quint32 nativeKey, quint32 nat
     QList<xcb_void_cookie_t> xcbCookies;
     for (quint32 maskMods : maskModifiers) {
         xcb_ungrab_key(xcbConnection, nativeKey, QX11Info::appRootWindow(), nativeMods | maskMods);
-
     }
 
     bool failed = false;

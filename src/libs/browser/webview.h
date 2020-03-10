@@ -24,8 +24,6 @@
 #ifndef ZEAL_BROWSER_WEBVIEW_H
 #define ZEAL_BROWSER_WEBVIEW_H
 
-#include <QVector>
-#include <QWebFrame>
 #include <QWebView>
 
 namespace Zeal {
@@ -42,7 +40,7 @@ public:
     void setZoomLevel(int level);
 
     static const QVector<int> &availableZoomLevels();
-    static const int &defaultZoomLevel();
+    static int defaultZoomLevel();
 
 public slots:
     void zoomIn();
@@ -62,11 +60,11 @@ protected:
 private:
     QWebHitTestResult hitTestContent(const QPoint &pos) const;
 
-    static bool isUrlExternal(const QUrl &url);
+    static bool isExternalUrl(const QUrl &url);
 
     QMenu *m_contextMenu = nullptr;
     QUrl m_clickedLink;
-    int m_zoomLevel = defaultZoomLevel();
+    int m_zoomLevel = 0;
 };
 
 } // namespace Browser

@@ -31,9 +31,9 @@
 
 using namespace Zeal::Registry;
 
-ListModel::ListModel(DocsetRegistry *docsetRegistry) :
-    QAbstractItemModel(docsetRegistry),
-    m_docsetRegistry(docsetRegistry)
+ListModel::ListModel(DocsetRegistry *docsetRegistry)
+    : QAbstractItemModel(docsetRegistry)
+    , m_docsetRegistry(docsetRegistry)
 {
     connect(m_docsetRegistry, &DocsetRegistry::docsetLoaded, this, &ListModel::addDocset);
     connect(m_docsetRegistry, &DocsetRegistry::docsetAboutToBeUnloaded, this, &ListModel::removeDocset);
@@ -83,6 +83,15 @@ QVariant ListModel::data(const QModelIndex &index, int role) const
             auto groupItem = static_cast<GroupItem *>(index.internalPointer());
             auto it = groupItem->docsetItem->docset->symbols(groupItem->symbolType).cbegin() + index.row();
             return it.key();
+        }
+        default:
+            return QVariant();
+        }
+    case Qt::ToolTipRole:
+        switch (indexLevel(index)) {
+        case Level::DocsetLevel: {
+            const auto docset = itemInRow(index.row())->docset;
+            return tr("Version: %1r%2").arg(docset->version(), docset->revision());
         }
         default:
             return QVariant();
@@ -146,7 +155,7 @@ QModelIndex ListModel::parent(const QModelIndex &child) const
             return {};
         }
 
-        const int row = std::distance(m_docsetItems.begin(), it);
+        const int row = static_cast<int>(std::distance(m_docsetItems.begin(), it));
         return createIndex(row, 0);
     }
     case SymbolLevel: {
@@ -160,7 +169,7 @@ QModelIndex ListModel::parent(const QModelIndex &child) const
 
 int ListModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent);
+    Q_UNUSED(parent)
     return 1;
 }
 
@@ -185,7 +194,7 @@ int ListModel::rowCount(const QModelIndex &parent) const
 
 void ListModel::addDocset(const QString &name)
 {
-    const int row = std::distance(m_docsetItems.begin(), m_docsetItems.upper_bound(name));
+    const int row = static_cast<int>(std::distance(m_docsetItems.begin(), m_docsetItems.upper_bound(name)));
     beginInsertRows(QModelIndex(), row, row);
 
     auto docsetItem = new DocsetItem();
@@ -212,7 +221,7 @@ void ListModel::removeDocset(const QString &name)
         return;
     }
 
-    const int row = std::distance(m_docsetItems.begin(), it);
+    const int row = static_cast<int>(std::distance(m_docsetItems.begin(), it));
     beginRemoveRows(QModelIndex(), row, row);
 
     qDeleteAll(it->second->groups);

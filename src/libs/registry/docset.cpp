@@ -35,8 +35,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
-#include <QVariant>
 #include <QVarLengthArray>
+#include <QVariant>
 
 #include <sqlite3.h>
 
@@ -46,26 +46,28 @@
 using namespace Zeal::Registry;
 
 namespace {
-const char IndexNamePrefix[] = "__zi_name"; // zi - Zeal index
-const char IndexNameVersion[] = "0001"; // Current index version
+constexpr char IndexNamePrefix[] = "__zi_name"; // zi - Zeal index
+constexpr char IndexNameVersion[] = "0001";     // Current index version
+
+constexpr char NotFoundPageUrl[] = "qrc:///browser/404.html";
 
 namespace InfoPlist {
-const char CFBundleName[] = "CFBundleName";
+constexpr char CFBundleName[] = "CFBundleName";
 //const char CFBundleIdentifier[] = "CFBundleIdentifier";
-const char DashDocSetFamily[] = "DashDocSetFamily";
-const char DashDocSetKeyword[] = "DashDocSetKeyword";
-const char DashDocSetPluginKeyword[] = "DashDocSetPluginKeyword";
-const char DashIndexFilePath[] = "dashIndexFilePath";
-const char DocSetPlatformFamily[] = "DocSetPlatformFamily";
+constexpr char DashDocSetFamily[] = "DashDocSetFamily";
+constexpr char DashDocSetKeyword[] = "DashDocSetKeyword";
+constexpr char DashDocSetPluginKeyword[] = "DashDocSetPluginKeyword";
+constexpr char DashIndexFilePath[] = "dashIndexFilePath";
+constexpr char DocSetPlatformFamily[] = "DocSetPlatformFamily";
 //const char IsDashDocset[] = "isDashDocset";
-const char IsJavaScriptEnabled[] = "isJavaScriptEnabled";
-}
-}
+constexpr char IsJavaScriptEnabled[] = "isJavaScriptEnabled";
+} // namespace InfoPlist
+} // namespace
 
 static void sqliteScoreFunction(sqlite3_context *context, int argc, sqlite3_value **argv);
 
-Docset::Docset(QString path) :
-    m_path(std::move(path))
+Docset::Docset(QString path)
+    : m_path(std::move(path))
 {
     QDir dir(m_path);
     if (!dir.exists())
@@ -171,14 +173,33 @@ Docset::Docset(QString path) :
 
     m_keywords.removeDuplicates();
 
-    // Prefer index path provided by the docset over metadata.
+    // Determine index page. This is ridiculous.
+    const QString mdIndexFilePath = m_indexFilePath; // Save path from the metadata.
+
+    // Prefer index path provided by the docset.
     if (plist.contains(InfoPlist::DashIndexFilePath)) {
-        m_indexFileUrl = createPageUrl(plist[InfoPlist::DashIndexFilePath].toString());
-    } else if (m_indexFileUrl.isEmpty()) {
-        if (dir.exists(QStringLiteral("index.html")))
-            m_indexFileUrl = createPageUrl(QStringLiteral("index.html"));
-        else
-            qWarning("Cannot determine index file for docset %s", qPrintable(m_name));
+        const QString indexFilePath = plist[InfoPlist::DashIndexFilePath].toString();
+        if (dir.exists(indexFilePath)) {
+            m_indexFilePath = indexFilePath;
+        }
+    }
+
+    // Check the metadata.
+    if (m_indexFilePath.isEmpty() && !mdIndexFilePath.isEmpty() && dir.exists(mdIndexFilePath)) {
+        m_indexFilePath = mdIndexFilePath;
+    }
+
+    // What if there is index.html.
+    if (m_indexFilePath.isEmpty() && dir.exists(QStringLiteral("index.html"))) {
+        m_indexFilePath = QStringLiteral("index.html");
+    }
+
+    // Log if unable to determine the index page. Otherwise the path will be set in setBaseUrl().
+    if (m_indexFilePath.isEmpty()) {
+        qWarning("Cannot determine index file for docset %s", qPrintable(m_name));
+        m_indexFileUrl.setUrl(NotFoundPageUrl);
+    } else {
+        m_indexFileUrl = createPageUrl(m_indexFilePath);
     }
 
     countSymbols();
@@ -392,12 +413,17 @@ void Docset::loadMetadata()
         const QJsonObject extra = jsonObject[QStringLiteral("extra")].toObject();
 
         if (extra.contains(QStringLiteral("indexFilePath"))) {
-            m_indexFileUrl = createPageUrl(extra[QStringLiteral("indexFilePath")].toString());
+            m_indexFilePath = extra[QStringLiteral("indexFilePath")].toString();
         }
 
         if (extra.contains(QStringLiteral("keywords"))) {
-            for (const QJsonValueRef kw : extra[QStringLiteral("keywords")].toArray())
+            for (const QJsonValueRef kw : extra[QStringLiteral("keywords")].toArray()) {
                 m_keywords << kw.toString();
+            }
+        }
+
+        if (extra.contains(QStringLiteral("isJavaScriptEnabled"))) {
+            m_javaScriptEnabled = extra[QStringLiteral("isJavaScriptEnabled")].toBool();
         }
     }
 }
@@ -430,11 +456,13 @@ void Docset::countSymbols()
 // TODO: Fetch and cache only portions of symbols
 void Docset::loadSymbols(const QString &symbolType) const
 {
-    // itPair is a QPair<QMap::const_iterator, QMap::const_iterator>, with itPair.first and itPair.second respectively
-    // pointing to the start and the end of the range of nodes having symbolType as key. It effectively represents a
+    // Iterator `it` is a QPair<QMap::const_iterator, QMap::const_iterator>,
+    // with it.first and it.second respectively pointing to the start and the end
+    // of the range of nodes having symbolType as key. It effectively represents a
     // contiguous view over the nodes with a specified key.
-    for (auto itPair = qAsConst(m_symbolStrings).equal_range(symbolType); itPair.first != itPair.second; ++itPair.first)
-        loadSymbols(symbolType, itPair.first.value());
+    for (auto it = qAsConst(m_symbolStrings).equal_range(symbolType); it.first != it.second; ++it.first) {
+        loadSymbols(symbolType, it.first.value());
+    }
 }
 
 void Docset::loadSymbols(const QString &symbolType, const QString &symbolString) const
@@ -458,9 +486,11 @@ void Docset::loadSymbols(const QString &symbolType, const QString &symbolString)
     }
 
     QMap<QString, QUrl> &symbols = m_symbols[symbolType];
-    while (m_db->next())
+    while (m_db->next()) {
         symbols.insertMulti(m_db->value(0).toString(),
-                            createPageUrl(m_db->value(1).toString(), m_db->value(2).toString()));
+                            createPageUrl(m_db->value(1).toString(),
+                                          m_db->value(2).toString()));
+    }
 }
 
 void Docset::createIndex()
@@ -533,12 +563,13 @@ QUrl Docset::createPageUrl(const QString &path, const QString &fragment) const
         realFragment = fragment;
     }
 
-    static const QRegularExpression dashEntryRegExp(QLatin1String("<dash_entry_.*>"));
+    static const QRegularExpression dashEntryRegExp(QStringLiteral("<dash_entry_.*>"));
     realPath.remove(dashEntryRegExp);
     realFragment.remove(dashEntryRegExp);
 
-    // Absolute file path is required here to handle relative path to the docset storage (see #806).
-    QUrl url = QUrl::fromLocalFile(QDir(documentPath()).absoluteFilePath(realPath));
+    QUrl url = m_baseUrl;
+    url.setPath(m_baseUrl.path() + "/" + realPath, QUrl::TolerantMode);
+
     if (!realFragment.isEmpty()) {
         if (realFragment.startsWith(QLatin1String("//apple_ref"))
                 || realFragment.startsWith(QLatin1String("//dash_ref"))) {
@@ -663,7 +694,10 @@ QString Docset::parseSymbolType(const QString &str)
         // Protocol
         {QStringLiteral("intf"), QStringLiteral("Protocol")},
         // Structure
+        {QStringLiteral("_Struct"), QStringLiteral("Structure")},
+        {QStringLiteral("_Structs"), QStringLiteral("Structure")},
         {QStringLiteral("struct"), QStringLiteral("Structure")},
+        {QStringLiteral("Сontrol Structure"), QStringLiteral("Structure")},
         {QStringLiteral("Data Structures"), QStringLiteral("Structure")},
         {QStringLiteral("Struct"), QStringLiteral("Structure")},
         // Type
@@ -680,6 +714,20 @@ QString Docset::parseSymbolType(const QString &str)
     };
 
     return aliases.value(str, str);
+}
+
+QUrl Docset::baseUrl() const
+{
+    return m_baseUrl;
+}
+
+void Docset::setBaseUrl(const QUrl &baseUrl)
+{
+    m_baseUrl = baseUrl;
+
+    if (!m_indexFilePath.isEmpty()) {
+        m_indexFileUrl = createPageUrl(m_indexFilePath);
+    }
 }
 
 bool Docset::isFuzzySearchEnabled() const
@@ -743,7 +791,7 @@ static void matchFuzzy(const char *needle, int needleLength,
         while (j < haystackLength) {
             if (needle[i] == haystack[j++]) {
                 if (*start == -1) {
-                    *start = j;  // first matched char
+                    *start = j; // first matched char
 
                     // try starting the search later in case the first character occurs again later
                     int recursiveStart;
@@ -833,11 +881,12 @@ static int scoreExact(int matchIndex, int matchLen, const char *value, int value
             // (2) Remove one point for each unmatched character
             //     following the query.
             int i = matchIndex - 2;
-            while (i >= 0 && value[i] != DOT)
+            while (i >= 0 && value[i] != DOT) {
                 --i;
+            }
 
-            score -= (matchIndex - i)                      // (1)
-                    + (valueLen - matchLen - matchIndex);  // (2)
+            score -= (matchIndex - i)                     // (1)
+                    + (valueLen - matchLen - matchIndex); // (2)
         }
 
         // Remove one point for each dot preceding the query, except for the
@@ -870,7 +919,7 @@ static inline int scoreFunction(const char *needleOrig, const char *haystackOrig
         if ((i > 0 && needleOrig[i - 1] == ':' && c == ':') // C++ (::)
                 || c == '/' || c == '_' || c == ' ') { // Go, some Guides
             needle[j] = '.';
-        } else if (c >= 'A' && c <= 'Z')  {
+        } else if (c >= 'A' && c <= 'Z') {
             needle[j] = c + 32;
         } else {
             needle[j] = c;
@@ -882,7 +931,7 @@ static inline int scoreFunction(const char *needleOrig, const char *haystackOrig
         if ((i > 0 && haystackOrig[i - 1] == ':' && c == ':') // C++ (::)
                 || c == '/' || c == '_' || c == ' ') { // Go, some Guides
             haystack[j] = '.';
-        } else if (c >= 'A' && c <= 'Z')  {
+        } else if (c >= 'A' && c <= 'Z') {
             haystack[j] = c + 32;
         } else {
             haystack[j] = c;
@@ -940,7 +989,7 @@ static inline int scoreFunction(const char *needleOrig, const char *haystackOrig
 
 static void sqliteScoreFunction(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
-    Q_UNUSED(argc);
+    Q_UNUSED(argc)
 
     auto needle = reinterpret_cast<const char *>(sqlite3_value_text(argv[0]));
     auto haystack = reinterpret_cast<const char *>(sqlite3_value_text(argv[1]));

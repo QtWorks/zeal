@@ -21,8 +21,8 @@
 **
 ****************************************************************************/
 
-#ifndef DOCSET_H
-#define DOCSET_H
+#ifndef ZEAL_REGISTRY_DOCSET_H
+#define ZEAL_REGISTRY_DOCSET_H
 
 #include <QIcon>
 #include <QMap>
@@ -77,6 +77,9 @@ public:
     // FIXME: This is an ugly workaround before we have a proper docset sources implementation
     bool hasUpdate = false;
 
+    QUrl baseUrl() const;
+    void setBaseUrl(const QUrl &baseUrl);
+
     bool isFuzzySearchEnabled() const;
     void setFuzzySearchEnabled(bool enabled);
 
@@ -110,6 +113,7 @@ private:
     QIcon m_icon;
 
     QUrl m_indexFileUrl;
+    QString m_indexFilePath;
 
     QMap<QString, QString> m_symbolStrings;
     QMap<QString, int> m_symbolCounts;
@@ -117,9 +121,11 @@ private:
     Util::SQLiteDatabase *m_db = nullptr;
     bool m_fuzzySearchEnabled = false;
     bool m_javaScriptEnabled = false;
+
+    QUrl m_baseUrl;
 };
 
 } // namespace Registry
 } // namespace Zeal
 
-#endif // DOCSET_H
+#endif // ZEAL_REGISTRY_DOCSET_H
